@@ -6,13 +6,13 @@ import torch
 from torch import nn
 from bigru import BiGRU, train, predict
 
-GLOVE_MODEL_PATH = '../../csci544/hw4/glove.6B.100d'
+GLOVE_MODEL_PATH = '../dataset/glove.6B.100d'
 CLEAN_FINE_DATA_DIR = '../dataset/fine_data_clean.csv'
 LOAD_PRETRAINED_MODEL = False
 
 
 def generate_glove_vocab_embeddings(glove_path):
-    with open(glove_path,'rt') as f:
+    with open(glove_path, 'rt', encoding='utf8') as f:
         full_content = f.read().strip().split('\n')
 
     glove_dict, embeddings = {'<pad>': 0, '<eos>': 1, '<unk>': 2}, []
@@ -53,14 +53,13 @@ def convert_words(corpus, word_dict):
     return poems
 
 def evaluate_score(y_true, y_pred):
-    print('----------- evalution ----------\n',
-          'micro f1: %.6f\n' % f1_score(y_true, y_pred, average='micro'),
+    print('micro f1: %.6f\n' % f1_score(y_true, y_pred, average='micro'),
           'macro f1: %.6f\n' % f1_score(y_true, y_pred, average='macro'),
           'weighted f1: %.6f\n' % f1_score(y_true, y_pred, average='weighted'))
 
 
 if __name__ == '__main__':
-    raw_data = pd.read_csv(CLEAN_FINE_DATA_DIR).sample(frac=1.0, random_state=19).reset_index(drop=True)[:1000]
+    raw_data = pd.read_csv(CLEAN_FINE_DATA_DIR).sample(frac=1.0, random_state=19).reset_index(drop=True)
     poems, labels = raw_data['poem'].to_numpy(), raw_data['label'].to_numpy(dtype=int)
     label_num = len(np.unique(labels))
     #print(poems, len(poems))
@@ -82,13 +81,12 @@ if __name__ == '__main__':
     # specify loss function (categorical cross-entropy)
     criterion = nn.CrossEntropyLoss()
     # specify optimizer and learning rate
-    #learning_rate = 1e-4
-    learning_rate = 1e-5
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    learning_rate = 8e-4
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, )
     print('learning_rate =', learning_rate)
 
     # train RNN
-    n_epochs = 10
+    n_epochs = 25
     if not LOAD_PRETRAINED_MODEL:
         bigru = train(model, 'bigru.pt',
                        X_train, y_train,
@@ -98,10 +96,17 @@ if __name__ == '__main__':
         bigru.load_state_dict(torch.load('bigru.pt'))
 
     bigru.eval()
+
+    y_pred = predict(bigru, X_train)
+    print('----------- evalution on train set ----------')
+    evaluate_score(y_train, y_pred)
+
+
     y_pred = predict(bigru, X_test)
 
-    for i in range(len(y_pred)):
-        if y_test[i] != y_pred[i].item():
-            print(y_test[i], y_pred[i])
+    # for i in range(len(y_pred)):
+    #     if y_test[i] != y_pred[i].item():
+    #         print(y_test[i], y_pred[i])
+    print('----------- evalution on test set ----------')
     evaluate_score(y_test, y_pred)
 

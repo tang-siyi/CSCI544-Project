@@ -9,9 +9,9 @@ from torch.nn.utils.rnn import pad_packed_sequence as unpack
 from sklearn.model_selection import train_test_split
 
 
-#BATCH_SIZE = 32
-BATCH_SIZE = 4
+BATCH_SIZE = 32
 LOG_MODE = True
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu"')
 
 
 """ NN model for classification """
@@ -23,7 +23,6 @@ class BiGRU(nn.Module):
         super(BiGRU, self).__init__()
 
         self.embedding_dim = 100
-        self.num_heads = 4
         self.hidden_dim = 256
         self.output_dim = 128
         self.layer_num = 1
@@ -32,13 +31,11 @@ class BiGRU(nn.Module):
         self.rnn = nn.GRU(self.embedding_dim, self.hidden_dim,
                           bidirectional=True, batch_first=True)
 
-        #self.attention = nn.MultiheadAttention(self.hidden_dim, self.num_heads, batch_first=True)
-        #self.attn_fc_q = nn.Linear(self.hidden_dim, self.hidden_dim)
-        #self.attn_fc_k = nn.Linear(self.hidden_dim, self.hidden_dim)
-        #self.attn_fc_v = nn.Linear(self.hidden_dim, self.hidden_dim)
-        #self.softmax = nn.Softmax(dim=-1)
+        self.attn_fc = nn.Linear(self.hidden_dim, 1)
+        self.softmax = nn.Softmax(dim=-1)
 
-        self.dropout = nn.Dropout(p=0.33)
+        # p=0.33: 0.59(f1)
+        self.dropout = nn.Dropout(p=0.5)
         self.linear = nn.Linear(self.hidden_dim, self.output_dim)
         self.elu = nn.ELU(alpha=1.0)
 
@@ -50,9 +47,8 @@ class BiGRU(nn.Module):
     def forward(self, input):
         self.batch_size = len(input)
         input_lens = [len(x) for x in input]
-        #mask = self.generate_mask(input_lens)
 
-        embeddings = [self.embedding(torch.tensor(x)) for x in input]
+        embeddings = [self.embedding(torch.tensor(x).to(device)) for x in input]
         embedding_padded = pad_sequence(embeddings, batch_first=True)
         embedding_padded = self.dropout(embedding_padded)
         embedding_len = embedding_padded.shape[1]
@@ -66,23 +62,13 @@ class BiGRU(nn.Module):
 
         hiddens = output.chunk(2, dim=-1)
         H = torch.mul(hiddens[0], hiddens[1])
-        output = H
-
-        # attention
-        #query = self.attn_fc_q(H)
-        #key = self.attn_fc_k(H)
-        #value = self.attn_fc_v(H)
-        #alpha, _ = self.attention(query, key, value)
-        #output = torch.mul(H, alpha)
-        #print('output: ', output.shape)
 
         # attention
         # ref: Attention-Based Bidirectional Long Short-Term Memory Networks for Relation Classification
-        #M = torch.tanh(H)
-        #alpha = self.softmax(self.attn_fc(M))
-        #r = torch.mul(H, alpha)
-        #output = torch.tanh(r)
-        #print('output: ', output.shape)
+        M = torch.tanh(H)
+        alpha = self.softmax(self.attn_fc(M))
+        r = torch.mul(H, alpha)
+        output = torch.tanh(r)
 
         output = self.dropout(output)
         output = self.linear(output)
@@ -94,26 +80,18 @@ class BiGRU(nn.Module):
     def init_weight(self):
         nn.init.kaiming_uniform_(self.rnn.weight_ih_l0.data)
         nn.init.kaiming_uniform_(self.rnn.weight_hh_l0.data)
-        #nn.init.xavier_uniform_(self.attn_fc.weight.data)
-        #nn.init.xavier_uniform_(self.attn_fc_q.weight.data)
-        #nn.init.xavier_uniform_(self.attn_fc_k.weight.data)
-        #nn.init.xavier_uniform_(self.attn_fc_v.weight.data)
+        nn.init.xavier_uniform_(self.attn_fc.weight.data)
         nn.init.xavier_uniform_(self.linear.weight.data)
         nn.init.xavier_uniform_(self.classifier.weight.data)
 
         nn.init.constant_(self.rnn.bias_ih_l0.data, 0) 
         nn.init.constant_(self.rnn.bias_hh_l0.data, 0) 
-        #nn.init.constant_(self.attn_fc.bias.data, 0) 
-        #nn.init.constant_(self.attn_fc_q.bias.data, 0) 
-        #nn.init.constant_(self.attn_fc_k.bias.data, 0) 
-        #nn.init.constant_(self.attn_fc_v.bias.data, 0) 
+        nn.init.constant_(self.attn_fc.bias.data, 0)
         nn.init.constant_(self.linear.bias.data, 0) 
         nn.init.constant_(self.classifier.bias.data, 0) 
     
     def init_hidden(self, input_dim):
-        #return (torch.zeros(self.layer_num*self.bi_num, self.batch_size, self.hidden_dim),
-        #        torch.zeros(self.layer_num*self.bi_num, self.batch_size, self.hidden_dim))
-        return torch.zeros(self.layer_num*self.bi_num, self.batch_size, self.hidden_dim)
+        return torch.zeros(self.layer_num*self.bi_num, self.batch_size, self.hidden_dim).to(device)
    
     # init embedding with GloVe
     def init_embedding(self, embeddings):
@@ -137,6 +115,8 @@ def batch_data(X):
 
 
 def train(model, model_dir, X, y, criterion, optimizer, n_epochs=5):
+    model = model.to(device)
+
     # prepare input data
     X_train, X_valid, y_train, y_valid = \
         train_test_split(X, y, test_size=0.2, random_state=9)
@@ -167,8 +147,8 @@ def train(model, model_dir, X, y, criterion, optimizer, n_epochs=5):
             # forward pass: compute predicted outputs by passing inputs to the model
             output, output_len = model(X)
             N = output.size(0)
-            predictions = torch.stack([output[i][output_len[i]-1].float() for i in range(N)])
-            targets = torch.LongTensor(target)
+            predictions = torch.stack([output[i][output_len[i]-1].float() for i in range(N)]).to(device)
+            targets = torch.LongTensor(target).to(device)
 
             # calculate the loss
             loss = criterion(predictions, targets) / N
@@ -182,17 +162,18 @@ def train(model, model_dir, X, y, criterion, optimizer, n_epochs=5):
 
         # validate the model
         model.eval() # prep model for evaluation
-        for X, target in zip(X_valid_batch, y_valid_batch):
-            # forward pass: compute predicted outputs by passing inputs to the model
-            output, output_len = model(X)
-            N = output.size(0)
-            predictions = torch.stack([output[i][output_len[i]-1].float() for i in range(N)])
-            targets = torch.LongTensor(target)
+        with torch.no_grad():
+            for X, target in zip(X_valid_batch, y_valid_batch):
+                # forward pass: compute predicted outputs by passing inputs to the model
+                output, output_len = model(X)
+                N = output.size(0)
+                predictions = torch.stack([output[i][output_len[i]-1].float() for i in range(N)]).to(device)
+                targets = torch.LongTensor(target).to(device)
 
-            # calculate the loss
-            loss = criterion(predictions, targets) / N
-            # update running validation loss 
-            valid_loss += loss.item()*torch.max(output_len).item()
+                # calculate the loss
+                loss = criterion(predictions, targets) / N
+                # update running validation loss 
+                valid_loss += loss.item()*torch.max(output_len).item()
 
         # print training/validation statistics 
         # calculate average loss over an epoch
@@ -230,12 +211,13 @@ def predict(model, X):
     softmax = nn.Softmax(dim=0)
 
     y_pred = []
-    for batch_idx in range(len(X_batch)):
-        # forward pass: compute predicted outputs by passing inputs to the model
-        output, output_len = model(X_batch[batch_idx])
-        for sentence_idx in range(len(output)):
-            prediction = output[sentence_idx][output_len[sentence_idx]-1].float()
-            y_pred.append(torch.argmax(softmax(prediction), dim=0))
+    with torch.no_grad():
+        for batch_idx in range(len(X_batch)):
+            # forward pass: compute predicted outputs by passing inputs to the model
+            output, output_len = model(X_batch[batch_idx])
+            for sentence_idx in range(len(output)):
+                prediction = output[sentence_idx][output_len[sentence_idx]-1].float()
+                y_pred.append(torch.argmax(softmax(prediction), dim=0).cpu())
 
     return y_pred
 
