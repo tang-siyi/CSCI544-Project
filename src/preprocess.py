@@ -1,6 +1,7 @@
 import pandas as pd
 pd.set_option('max_colwidth',150)
 pd.options.mode.chained_assignment = None
+import json
 import numpy as np
 import nltk
 
@@ -10,7 +11,7 @@ FINE_DATA_DIR = DATASET_DIR+'fine_data.csv'
 raw_data = pd.read_csv(FINE_DATA_DIR)
 #print(raw_data.head(3))
 
-data_pt = raw_data[["poem","our_tag"]]
+data_pt = raw_data[["poem","our_tag","original_tag"]].sample(frac=1.0, random_state=23).reset_index(drop=True)
 #print(data_pt.head(10))
 
 total_poem = len(data_pt["poem"])
@@ -32,13 +33,28 @@ data_pt["poem"] = poem_content
 #print(data_pt.head(5))
 
 
-data_pt_clean = pd.DataFrame(columns=['poem', 'label'])
+data_pt_clean = pd.DataFrame(columns=['poem', 'original_label', 'label'])
 # convert label from string to integer
 labels = data_pt['our_tag'].value_counts().keys()
-label_map = {}
+label_idx_map, idx_label_map = {}, {}
 for i in range(len(labels)):
-    label_map[labels[i]] = i
-data_pt_clean['label'] = [label_map[x] for x in data_pt['our_tag']]
+    label_idx_map[labels[i]] = i
+    idx_label_map[i] = labels[i]
+data_pt_clean['label'] = [label_idx_map[x] for x in data_pt['our_tag']]
+#print(label_idx_map, idx_label_map)
+json.dump({'label2idx': label_idx_map, 'idx2label': idx_label_map}, open('../dataset/our_tag_map.json', 'w'))
+
+# convert label from string to integer
+ori_labels = data_pt['original_tag'].value_counts().keys()
+ori_label_idx_map, ori_idx_label_map = {}, {}
+for i in range(len(ori_labels)):
+    ori_label_idx_map[ori_labels[i]] = i
+    ori_idx_label_map[i] = ori_labels[i]
+data_pt_clean['original_label'] = [ori_label_idx_map[x] for x in data_pt['original_tag']]
+#print(data_pt_clean['original_label'])
+#print(ori_label_idx_map, ori_label_idx_map)
+json.dump({'label2idx': ori_label_idx_map, 'idx2label': ori_idx_label_map}, open('../dataset/original_tag_map.json', 'w'))
+
 
 
 
@@ -65,7 +81,7 @@ def clean(poem):
     return poem
 
 data_pt_clean['poem'] = [clean(x) for x in data_pt['poem']]
-print(data_pt_clean.head(5))
+#print(data_pt_clean.head(5))
 
 
 #remove stop word
@@ -107,4 +123,4 @@ print("sample poem after data clean and preprogress")
 print(data_pt_clean.head(3))
 
 
-#data_pt_clean.to_csv(DATASET_DIR+'fine_data_clean.csv', index=False)
+data_pt_clean.to_csv(DATASET_DIR+'fine_data_clean.csv', index=False)
