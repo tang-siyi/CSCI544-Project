@@ -23,8 +23,11 @@ from transformers import get_linear_schedule_with_warmup
 CLEAN_FINE_DATA_DIR = '../dataset/fine_data_clean.csv'
 DATASET_DIR = '../dataset/'
 FINE_DATA_DIR = DATASET_DIR+'fine_data.csv'
-BATCH_SIZE=4
-LOG_MODE=True
+
+
+BATCH_SIZE = 4
+LOG_MODE = True
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 def load_data(data_dir):
     raw_data = pd.read_csv(data_dir)[:20]
@@ -72,11 +75,13 @@ def encode(poems):
     for poem in poems:
         embedding = tokenizer.encode(poem, add_special_tokens = True,
                                      padding = True, truncation=True, return_tensors = 'pt')
-        embeddings.append(embedding[0])
+        embeddings.append(embedding[0].to(device))
     return embeddings
 
 
 def train(model, model_dir, X, y, optimizer, n_epochs=5):
+    model = model.to(device)
+
     # prepare input data
     X_train, X_valid, y_train, y_valid = \
         train_test_split(X, y, test_size=0.2, random_state=9)
@@ -187,7 +192,7 @@ def predict(model, X):
                            labels=torch.tensor(target, dtype=torch.float))
             logits = outputs['logits']
             #logits = logits.detach().cpu().numpy()
-            preds.append(np.argmax(logits))
+            preds.append(torch.argmax(logits).cpu())
 
     return preds
 

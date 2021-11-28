@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 
 BATCH_SIZE = 32
 LOG_MODE = True
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu"')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 
 """ NN model for classification """
