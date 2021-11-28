@@ -108,13 +108,15 @@ def train(model, model_dir, X, y, optimizer, n_epochs=5):
             model.zero_grad()
 
             X_encoded = encode(X)
-            X_lens = [x.shape[0] for x in X_encoded]
             X_padded = pad_sequence(X_encoded, batch_first=True)
+            labels = torch.tensor(target, dtype=torch.float).to(device)
 
             output = model(X_padded,
                            token_type_ids=None,
                            attention_mask=(X_padded>0),
-                           labels=torch.tensor(target, dtype=torch.float))
+                           labels=labels)
+
+            del X_encoded, X_padded, labels
 
             loss = output['loss']
             loss.backward()
@@ -126,23 +128,26 @@ def train(model, model_dir, X, y, optimizer, n_epochs=5):
 
         # validate the model
         model.eval() # prep model for evaluation
-        for X, target in zip(X_valid_batch, y_valid_batch):
-            X_encoded = encode(X)
-            X_lens = [x.shape[0] for x in X_encoded]
-            X_padded = pad_sequence(X_encoded, batch_first=True)
+        with torch.no_grad():
+            for X, target in zip(X_valid_batch, y_valid_batch):
+                X_encoded = encode(X)
+                X_padded = pad_sequence(X_encoded, batch_first=True)
+                labels = torch.tensor(target, dtype=torch.float).to(device)
 
-            output = model(X_padded,
-                           token_type_ids=None,
-                           attention_mask=(X_padded>0),
-                           labels=torch.tensor(target, dtype=torch.float))
+                output = model(X_padded,
+                               token_type_ids=None,
+                               attention_mask=(X_padded>0),
+                               labels=labels)
 
-            loss = output['loss']
-            loss.backward()
-            # perform a single optimization step (parameter update)
-            optimizer.step()
-            scheduler.step()
-            # update running training loss
-            valid_loss += loss.item()
+                del X_encoded, X_padded, labels
+
+                loss = output['loss']
+                loss.backward()
+                # perform a single optimization step (parameter update)
+                optimizer.step()
+                scheduler.step()
+                # update running training loss
+                valid_loss += loss.item()
 
         # print training/validation statistics 
         # calculate average loss over an epoch
