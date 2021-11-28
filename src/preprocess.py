@@ -11,7 +11,7 @@ FINE_DATA_DIR = DATASET_DIR+'fine_data.csv'
 raw_data = pd.read_csv(FINE_DATA_DIR)
 #print(raw_data.head(3))
 
-data_pt = raw_data[["poem","our_tag","original_tag"]].sample(frac=1.0, random_state=23).reset_index(drop=True)
+data_pt = raw_data[["poem","our_tag","original_tag"]]#.sample(frac=1.0, random_state=23).reset_index(drop=True)
 #print(data_pt.head(10))
 
 total_poem = len(data_pt["poem"])
