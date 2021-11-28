@@ -6,7 +6,7 @@ import numpy as np
 import nltk
 
 DATASET_DIR = '../dataset/'
-FINE_DATA_DIR = DATASET_DIR+'fine_data.csv'
+FINE_DATA_DIR = DATASET_DIR+'fine_data_tsy.csv'
 
 raw_data = pd.read_csv(FINE_DATA_DIR)
 #print(raw_data.head(3))
@@ -123,4 +123,4 @@ print("sample poem after data clean and preprogress")
 print(data_pt_clean.head(3))
 
 
-data_pt_clean.to_csv(DATASET_DIR+'fine_data_clean.csv', index=False)
+data_pt_clean.to_csv(DATASET_DIR+'fine_data_clean_tsy.csv', index=False)

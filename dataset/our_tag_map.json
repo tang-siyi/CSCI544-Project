@@ -1,1 +1,1 @@
-{"label2idx": {"other": 0, "emotion": 1, "travel": 2, "relation": 3, "romance": 4, "location": 5, "art": 6}, "idx2label": {"0": "other", "1": "emotion", "2": "travel", "3": "relation", "4": "romance", "5": "location", "6": "art"}}
+{"label2idx": {"emotion": 0, "other": 1, "nature": 2, "person": 3, "time_location": 4, "ceremony": 5, "culture": 6, "religion": 7}, "idx2label": {"0": "emotion", "1": "other", "2": "nature", "3": "person", "4": "time_location", "5": "ceremony", "6": "culture", "7": "religion"}}
