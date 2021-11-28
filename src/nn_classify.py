@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import json
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import torch
@@ -8,6 +9,8 @@ from bigru import BiGRU, train, predict
 
 GLOVE_MODEL_PATH = '../dataset/glove.6B.100d'
 CLEAN_FINE_DATA_DIR = '../dataset/fine_data_clean.csv'
+ORI_LABEL_JSON_DIR = '../dataset/original_tag_map.json'
+OUR_LABEL_JSON_DIR = '../dataset/our_tag_map.json'
 LOAD_PRETRAINED_MODEL = False
 
 
@@ -58,12 +61,23 @@ def evaluate_score(y_true, y_pred):
           'weighted f1: %.6f\n' % f1_score(y_true, y_pred, average='weighted'))
 
 
+def load_json(file_dir):
+    with open(file_dir, 'r') as f:
+        json_file = json.load(f)
+    return json_file
+
+
 if __name__ == '__main__':
     raw_data = pd.read_csv(CLEAN_FINE_DATA_DIR).sample(frac=1.0, random_state=19).reset_index(drop=True)
     poems, labels = raw_data['poem'].to_numpy(), raw_data['label'].to_numpy(dtype=int)
     label_num = len(np.unique(labels))
     #print(poems, len(poems))
     #print(labels, len(labels))
+
+    ori_labels = raw_data['original_label'].to_numpy(dtype=int)
+    ori_maps, our_maps = load_json(ORI_LABEL_JSON_DIR), load_json(OUR_LABEL_JSON_DIR)
+    #print(ori_maps)
+    #print(our_maps)
 
     glove_dict, embeddings = generate_glove_vocab_embeddings(GLOVE_MODEL_PATH)
     #print(glove_dict)
