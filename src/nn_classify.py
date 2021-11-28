@@ -103,12 +103,12 @@ if __name__ == '__main__':
     # train RNN
     n_epochs = 25
     if not LOAD_PRETRAINED_MODEL:
-        bigru = train(model, 'bigru.pt',
+        bigru = train(model, 'model_bigru.pt',
                        X_train, y_train,
                        criterion, optimizer, n_epochs=n_epochs)
     else:
         bigru = model
-        bigru.load_state_dict(torch.load('bigru.pt'))
+        bigru.load_state_dict(torch.load('model_bigru.pt'))
 
     bigru.eval()
 
@@ -125,9 +125,6 @@ if __name__ == '__main__':
 
     for i in range(len(y_pred)):
         # if y_test[i] != y_pred[i].item():
-            # print('original mini-label: ', ori_maps['idx2label'][str(ori_label_test[i])],
-            #       '\t\ttrue label: ', our_maps['idx2label'][str(y_test[i])],
-            #       '\t\tpred label: ', our_maps['idx2label'][str(y_pred[i].item())])
         wrong_index.append(i)
         wrong_ori_label.append(ori_maps['idx2label'][str(ori_label_test[i])])
         wrong_our_label_true.append(our_maps['idx2label'][str(y_test[i])])

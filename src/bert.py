@@ -30,7 +30,7 @@ LOG_MODE = True
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 def load_data(data_dir):
-    raw_data = pd.read_csv(data_dir)[:20]
+    raw_data = pd.read_csv(data_dir)
     #print(raw_data.head(3))
     
     data_pt = raw_data[["poem","our_tag"]]
@@ -73,8 +73,7 @@ def encode(poems):
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
     embeddings = []
     for poem in poems:
-        embedding = tokenizer.encode(poem, add_special_tokens = True,
-                                     padding = True, truncation=True, return_tensors = 'pt')
+        embedding = tokenizer.encode(poem, add_special_tokens = True, truncation = True, return_tensors = 'pt')
         embeddings.append(embedding[0].to(device))
     return embeddings
 
@@ -109,13 +108,14 @@ def train(model, model_dir, X, y, optimizer, n_epochs=5):
 
             X_encoded = encode(X)
             X_padded = pad_sequence(X_encoded, batch_first=True)
+            X_len = X_padded.shape[1]
             labels = torch.tensor(target, dtype=torch.float).to(device)
 
             output = model(X_padded,
                            token_type_ids=None,
                            attention_mask=(X_padded>0),
                            labels=labels)
-
+            #print('X_padded.shape:', X_padded.shape, 'output: ', output)
             del X_encoded, X_padded, labels
 
             loss = output['loss']
@@ -124,7 +124,7 @@ def train(model, model_dir, X, y, optimizer, n_epochs=5):
             optimizer.step()
             scheduler.step()
             # update running training loss
-            train_loss += loss.item()
+            train_loss += loss.item()*X_len
 
         # validate the model
         model.eval() # prep model for evaluation
@@ -132,6 +132,7 @@ def train(model, model_dir, X, y, optimizer, n_epochs=5):
             for X, target in zip(X_valid_batch, y_valid_batch):
                 X_encoded = encode(X)
                 X_padded = pad_sequence(X_encoded, batch_first=True)
+                X_len = X_padded.shape[1]
                 labels = torch.tensor(target, dtype=torch.float).to(device)
 
                 output = model(X_padded,
@@ -142,12 +143,8 @@ def train(model, model_dir, X, y, optimizer, n_epochs=5):
                 del X_encoded, X_padded, labels
 
                 loss = output['loss']
-                loss.backward()
-                # perform a single optimization step (parameter update)
-                optimizer.step()
-                scheduler.step()
                 # update running training loss
-                valid_loss += loss.item()
+                valid_loss += loss.item()*X_len
 
         # print training/validation statistics 
         # calculate average loss over an epoch
@@ -193,18 +190,22 @@ def predict(model, X):
 
             output = model(X_padded,
                            token_type_ids=None,
-                           attention_mask=(X_padded>0),
-                           labels=torch.tensor(target, dtype=torch.float))
-            logits = outputs['logits']
-            #logits = logits.detach().cpu().numpy()
-            preds.append(torch.argmax(logits).cpu())
+                           attention_mask=(X_padded>0))
+            logits = output['logits'].detach().cpu().numpy()
+            for x in logits:
+                preds.append(np.argmax(x))
 
     return preds
 
 
+def evaluate_score(y_true, y_pred):
+    print('micro f1: %.6f\n' % f1_score(y_true, y_pred, average='micro'),
+          'macro f1: %.6f\n' % f1_score(y_true, y_pred, average='macro'),
+          'weighted f1: %.6f\n' % f1_score(y_true, y_pred, average='weighted'))
+
+
+
 if __name__ == '__main__':
-    #raw_data = pd.read_csv(CLEAN_FINE_DATA_DIR).sample(frac=1.0, random_state=19).reset_index(drop=True)[:20]
-    #poems, labels = raw_data['poem'].to_numpy(), raw_data['label'].to_numpy(dtype=int)
     poems, labels = load_data(FINE_DATA_DIR)
     label_num = len(np.unique(labels))
 
@@ -217,7 +218,16 @@ if __name__ == '__main__':
                     num_labels=label_num, output_attentions=False, output_hidden_states=False)
     
     # create optimizer and learning rate schedule
-    optimizer = AdamW(model.parameters(), lr=2e-5)
+    optimizer = AdamW(model.parameters(), lr=1e-6)
 
-    train(model, 'bert.pt', X_train, y_train, optimizer, n_epochs)
+    LOAD_PRETRAINED_MODEL = True
+    if not LOAD_PRETRAINED_MODEL:
+        model = train(model, 'model_bert.pt', X_train, y_train, optimizer, n_epochs)
+    else:
+        model.load_state_dict(torch.load('model_bert.pt'))
+        model.eval()
+    
     y_pred = predict(model, X_test)
+    print('----------- evalution on test set ----------')
+    evaluate_score(y_test, y_pred)
+
