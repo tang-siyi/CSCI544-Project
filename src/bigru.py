@@ -72,7 +72,8 @@ class BiGRU(nn.Module):
 
         output = self.dropout(output)
         output = self.linear(output)
-        output = self.elu(output)
+        # output = self.elu(output)
+        output = torch.tanh(output)
         output = self.classifier(output)
         return (output, output_len)
 
@@ -207,6 +208,8 @@ def train(model, model_dir, X, y, criterion, optimizer, n_epochs=5):
 
 
 def predict(model, X):
+    model.to(device)
+
     X_batch = batch_data(X)
     softmax = nn.Softmax(dim=0)
 

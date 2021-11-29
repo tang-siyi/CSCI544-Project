@@ -91,7 +91,7 @@ class BERT(nn.Module):
         embeddings = []
         for poem in poems:
             embedding = self.tokenizer.encode(poem, add_special_tokens = True, 
-                            max_length=256, truncation = True, return_tensors = 'pt')
+                            max_length=512, truncation = True, return_tensors = 'pt')
             #print(embedding[0].shape)
             embeddings.append(embedding[0].to(device))
         return embeddings
@@ -145,6 +145,9 @@ def train(model, model_dir, X, y, criterion, optimizer, n_epochs=5):
 
             end_batch = time.process_time()
 
+            # if LOG_MODE:
+            #     print('time each epoch: %.2f s' % (end_batch-start_batch))
+
         # validate the model
         model.eval() # prep model for evaluation
         with torch.no_grad():
@@ -194,12 +197,13 @@ def predict(model, X):
     softmax = nn.Softmax(dim=0)
     preds = []
 
+    model = model.to(device)
     model.eval() # prep model for evaluation
     with torch.no_grad():
         for X in X_batch:
             output = model(X)
             for x in output:
-                preds.append(torch.argmax(softmax(x), dim=0))
+                preds.append(torch.argmax(softmax(x), dim=0).cpu())
 
     return preds
 
@@ -217,7 +221,7 @@ if __name__ == '__main__':
 
     X_train, X_test, y_train, y_test = train_test_split(poems, labels, test_size=0.2, random_state=23)
     
-    n_epochs = 1
+    n_epochs = 5
 
     # Load the pretrained BERT model
     #model = BertForSequenceClassification.from_pretrained('bert-base-uncased',
@@ -228,11 +232,11 @@ if __name__ == '__main__':
     # specify loss function (categorical cross-entropy)
     criterion = nn.CrossEntropyLoss()
     # specify optimizer and learning rate
-    learning_rate = 1e-7
+    learning_rate = 1e-6
     # create optimizer and learning rate schedule
     optimizer = AdamW(model.parameters(), lr=learning_rate)
 
-    LOAD_PRETRAINED_MODEL = False
+    LOAD_PRETRAINED_MODEL = True
     if not LOAD_PRETRAINED_MODEL:
         model = train(model, 'model_bert.pt', X_train, y_train, criterion, optimizer, n_epochs)
     else:
@@ -240,6 +244,7 @@ if __name__ == '__main__':
         model.eval()
     
     y_pred = predict(model, X_test)
+    # print(y_pred)
     print('----------- evalution on test set ----------')
     evaluate_score(y_test, y_pred)
 

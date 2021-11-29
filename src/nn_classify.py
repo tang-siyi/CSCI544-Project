@@ -11,7 +11,6 @@ GLOVE_MODEL_PATH = '../dataset/glove.6B.100d'
 CLEAN_FINE_DATA_DIR = '../dataset/fine_data_clean.csv'
 ORI_LABEL_JSON_DIR = '../dataset/original_tag_map.json'
 OUR_LABEL_JSON_DIR = '../dataset/our_tag_map.json'
-LOAD_PRETRAINED_MODEL = False
 
 
 def generate_glove_vocab_embeddings(glove_path):
@@ -102,6 +101,7 @@ if __name__ == '__main__':
 
     # train RNN
     n_epochs = 25
+    LOAD_PRETRAINED_MODEL = False
     if not LOAD_PRETRAINED_MODEL:
         bigru = train(model, 'model_bigru.pt',
                        X_train, y_train,
@@ -119,22 +119,22 @@ if __name__ == '__main__':
 
     y_pred = predict(bigru, X_test)
 
-    wrong_pred = pd.DataFrame(columns=['index', 'ori_label', 'our_label_true', 'our_label_pred'])
-    wrong_index, wrong_ori_label = [], []
-    wrong_our_label_true, wrong_our_label_pred = [], []
+    # wrong_pred = pd.DataFrame(columns=['index', 'ori_label', 'our_label_true', 'our_label_pred'])
+    # wrong_index, wrong_ori_label = [], []
+    # wrong_our_label_true, wrong_our_label_pred = [], []
 
-    for i in range(len(y_pred)):
-        # if y_test[i] != y_pred[i].item():
-        wrong_index.append(i)
-        wrong_ori_label.append(ori_maps['idx2label'][str(ori_label_test[i])])
-        wrong_our_label_true.append(our_maps['idx2label'][str(y_test[i])])
-        wrong_our_label_pred.append(our_maps['idx2label'][str(y_pred[i].item())])
+    # for i in range(len(y_pred)):
+    #     # if y_test[i] != y_pred[i].item():
+    #     wrong_index.append(i)
+    #     wrong_ori_label.append(ori_maps['idx2label'][str(ori_label_test[i])])
+    #     wrong_our_label_true.append(our_maps['idx2label'][str(y_test[i])])
+    #     wrong_our_label_pred.append(our_maps['idx2label'][str(y_pred[i].item())])
     
-    wrong_pred['index'] = np.array(wrong_index)
-    wrong_pred['ori_label'] = np.array(wrong_ori_label)
-    wrong_pred['our_label_true'] = np.array(wrong_our_label_true)
-    wrong_pred['our_label_pred'] = np.array(wrong_our_label_pred)
-    wrong_pred.to_csv('wrong_prediction.csv', index=False)
+    # wrong_pred['index'] = np.array(wrong_index)
+    # wrong_pred['ori_label'] = np.array(wrong_ori_label)
+    # wrong_pred['our_label_true'] = np.array(wrong_our_label_true)
+    # wrong_pred['our_label_pred'] = np.array(wrong_our_label_pred)
+    # wrong_pred.to_csv('wrong_prediction.csv', index=False)
 
     print('----------- evalution on test set ----------')
     evaluate_score(y_test, y_pred)
