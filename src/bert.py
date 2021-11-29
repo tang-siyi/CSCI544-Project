@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
 import torch
+from torch import nn
 from torch.nn.utils.rnn import pad_sequence
 from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
@@ -17,6 +18,7 @@ logging.set_verbosity_warning()
 logging.set_verbosity_error()
 from transformers import BertTokenizer
 from transformers import BertForSequenceClassification, AdamW
+from transformers import BertModel
 from transformers import get_linear_schedule_with_warmup
 
 
@@ -25,7 +27,7 @@ DATASET_DIR = '../dataset/'
 FINE_DATA_DIR = DATASET_DIR+'fine_data.csv'
 
 
-BATCH_SIZE = 4
+BATCH_SIZE = 1
 LOG_MODE = True
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -46,7 +48,6 @@ def load_data(data_dir):
         poem = raw_poem[1:-1].replace("\"","").split(",")
         sentences = [x.strip(" ").strip("'") for x in poem]
         poem_str = ' '.join(sentences)
-        #print(poem_str)
         return poem_str
     
     poems = [reformat(x) for x in poem_content]
@@ -69,16 +70,35 @@ def batch_data(X):
     return X_batch
 
 
-def encode(poems):
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
-    embeddings = []
-    for poem in poems:
-        embedding = tokenizer.encode(poem, add_special_tokens = True, truncation = True, return_tensors = 'pt')
-        embeddings.append(embedding[0].to(device))
-    return embeddings
 
 
-def train(model, model_dir, X, y, optimizer, n_epochs=5):
+class BERT(nn.Module):
+    def __init__(self, label_num):
+        super(BERT, self).__init__()
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+        self.bert = BertForSequenceClassification.from_pretrained('bert-base-uncased',
+                    num_labels=label_num, output_attentions=False, output_hidden_states=False)
+    
+    def forward(self, X):
+        X_encoded = self.encode(X)
+        X_padded = pad_sequence(X_encoded, batch_first=True)
+
+        output = self.bert(X_padded, token_type_ids=None, attention_mask=(X_padded>0))
+        #print('output: ', output)
+        return output['logits']
+
+    def encode(self, poems):
+        embeddings = []
+        for poem in poems:
+            embedding = self.tokenizer.encode(poem, add_special_tokens = True, 
+                            max_length=256, truncation = True, return_tensors = 'pt')
+            #print(embedding[0].shape)
+            embeddings.append(embedding[0].to(device))
+        return embeddings
+
+
+
+def train(model, model_dir, X, y, criterion, optimizer, n_epochs=5):
     model = model.to(device)
 
     # prepare input data
@@ -103,48 +123,40 @@ def train(model, model_dir, X, y, optimizer, n_epochs=5):
         # train the model
         model.train() # prep model for training
         for X, target in zip(X_train_batch, y_train_batch):
+            start_batch = time.process_time()
+
+
             # clear the gradients of all optimized variables
             model.zero_grad()
 
-            X_encoded = encode(X)
-            X_padded = pad_sequence(X_encoded, batch_first=True)
-            X_len = X_padded.shape[1]
-            labels = torch.tensor(target, dtype=torch.float).to(device)
+            output = model(X)
+            N = output.size(0)
+            targets = torch.LongTensor(target).to(device)
 
-            output = model(X_padded,
-                           token_type_ids=None,
-                           attention_mask=(X_padded>0),
-                           labels=labels)
-            #print('X_padded.shape:', X_padded.shape, 'output: ', output)
-            del X_encoded, X_padded, labels
-
-            loss = output['loss']
+            # calculate the loss
+            loss = criterion(output, targets) / N
+            # backward pass: compute gradient of the loss with respect to model parameters
             loss.backward()
             # perform a single optimization step (parameter update)
             optimizer.step()
             scheduler.step()
             # update running training loss
-            train_loss += loss.item()*X_len
+            train_loss += loss.item()
+
+            end_batch = time.process_time()
 
         # validate the model
         model.eval() # prep model for evaluation
         with torch.no_grad():
             for X, target in zip(X_valid_batch, y_valid_batch):
-                X_encoded = encode(X)
-                X_padded = pad_sequence(X_encoded, batch_first=True)
-                X_len = X_padded.shape[1]
-                labels = torch.tensor(target, dtype=torch.float).to(device)
+                output = model(X)
+                N = output.size(0)
+                targets = torch.LongTensor(target).to(device)
 
-                output = model(X_padded,
-                               token_type_ids=None,
-                               attention_mask=(X_padded>0),
-                               labels=labels)
-
-                del X_encoded, X_padded, labels
-
-                loss = output['loss']
+                # calculate the loss
+                loss = criterion(output, targets) / N
                 # update running training loss
-                valid_loss += loss.item()*X_len
+                valid_loss += loss.item()
 
         # print training/validation statistics 
         # calculate average loss over an epoch
@@ -179,21 +191,15 @@ def train(model, model_dir, X, y, optimizer, n_epochs=5):
 
 def predict(model, X):
     X_batch = batch_data(X)
+    softmax = nn.Softmax(dim=0)
     preds = []
 
     model.eval() # prep model for evaluation
     with torch.no_grad():
         for X in X_batch:
-            X_encoded = encode(X)
-            X_lens = [x.shape[0] for x in X_encoded]
-            X_padded = pad_sequence(X_encoded, batch_first=True)
-
-            output = model(X_padded,
-                           token_type_ids=None,
-                           attention_mask=(X_padded>0))
-            logits = output['logits'].detach().cpu().numpy()
-            for x in logits:
-                preds.append(np.argmax(x))
+            output = model(X)
+            for x in output:
+                preds.append(torch.argmax(softmax(x), dim=0))
 
     return preds
 
@@ -211,18 +217,24 @@ if __name__ == '__main__':
 
     X_train, X_test, y_train, y_test = train_test_split(poems, labels, test_size=0.2, random_state=23)
     
-    n_epochs = 10
+    n_epochs = 1
 
     # Load the pretrained BERT model
-    model = BertForSequenceClassification.from_pretrained('bert-base-uncased',
-                    num_labels=label_num, output_attentions=False, output_hidden_states=False)
+    #model = BertForSequenceClassification.from_pretrained('bert-base-uncased',
+    #                num_labels=label_num, output_attentions=False, output_hidden_states=False)
     
-    # create optimizer and learning rate schedule
-    optimizer = AdamW(model.parameters(), lr=1e-6)
+    model = BERT(label_num)
 
-    LOAD_PRETRAINED_MODEL = True
+    # specify loss function (categorical cross-entropy)
+    criterion = nn.CrossEntropyLoss()
+    # specify optimizer and learning rate
+    learning_rate = 1e-7
+    # create optimizer and learning rate schedule
+    optimizer = AdamW(model.parameters(), lr=learning_rate)
+
+    LOAD_PRETRAINED_MODEL = False
     if not LOAD_PRETRAINED_MODEL:
-        model = train(model, 'model_bert.pt', X_train, y_train, optimizer, n_epochs)
+        model = train(model, 'model_bert.pt', X_train, y_train, criterion, optimizer, n_epochs)
     else:
         model.load_state_dict(torch.load('model_bert.pt'))
         model.eval()
